@@ -1,8 +1,17 @@
 from flask import Flask, request, jsonify
 import sqlite3
 
+import uuid
+import time
+from werkzeug.security import check_password_hash
+
+from functools import wraps
+
+tokens = {}  # token -> (username, expiry)
+TOKEN_EXPIRY_SECONDS = 3600  # 1 hour
+
 app = Flask(__name__)
-DATABASE = 'sponsors.db'
+DATABASE = 'data.db'
 SCHEMA_FILE = 'schema.sql'
 
 def get_db_connection():
@@ -19,6 +28,29 @@ def init_db():
     conn.commit()
     conn.close()
     print("Database initialized.")
+
+@app.route('/admin/login', methods=['POST'])
+def admin_login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({'error': 'Missing credentials'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT password_hash FROM users WHERE username = ?", (username,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if row and check_password_hash(row['password_hash'], password):
+        token = str(uuid.uuid4())
+        expiry = time.time() + TOKEN_EXPIRY_SECONDS
+        tokens[token] = (username, expiry)
+        return jsonify({'token': token})
+    else:
+        return jsonify({'error': 'Invalid username or password'}), 401
 
 @app.route('/sponsor', methods=['GET'])
 def get_sponsors():
@@ -40,6 +72,23 @@ def get_sponsors():
     sponsor_list = [dict(row) for row in sponsors]
     return jsonify(sponsor_list)
 
+def require_token(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token or token not in tokens:
+            return jsonify({'error': 'Unauthorized'}), 401
+        username, expiry = tokens[token]
+        if time.time() > expiry:
+            del tokens[token]
+            return jsonify({'error': 'Token expired'}), 401
+        return f(*args, **kwargs)
+    return wrapper
+    
+@app.route('/admin/protected', methods=['GET'])
+@require_token
+def protected_route():
+    return jsonify({'message': 'Authorized access'})
 
 if __name__ == '__main__':
     init_db()
