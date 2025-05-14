@@ -9,6 +9,20 @@ from functools import wraps
 
 import re
 
+import logging
+
+from flask import g
+
+admin_logger = logging.getLogger('admin_logger')
+admin_logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler('admin_actions.log')
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+
+admin_logger.addHandler(file_handler)
+def log_action(username, action, details):
+    admin_logger.info(f"{username} {action}: {details}")
+
 tokens = {}  # token -> (username, expiry)
 TOKEN_EXPIRY_SECONDS = 3600  # 1 hour
 
@@ -130,6 +144,7 @@ def require_token(f):
         if time.time() > expiry:
             del tokens[token]
             return jsonify({'error': 'Token expired'}), 401
+        g.username = username  # attach username to request context
         return f(*args, **kwargs)
     return wrapper
     
@@ -175,6 +190,9 @@ def create_ingredient():
     )
     conn.commit()
     conn.close()
+    
+    log_action(g.username, "created ingredient", f"{name}, score={score}")
+    
     return jsonify({'status': 'ingredient created'})
 
 @app.route('/admin/ingredient/<int:id>', methods=['PUT'])
@@ -192,6 +210,9 @@ def edit_ingredient(id):
     )
     conn.commit()
     conn.close()
+    
+    log_action(g.username, "edited ingredient", f"id={id}, name={name}, score={score}")
+    
     return jsonify({'status': 'ingredient updated'})
 
 @app.route('/admin/ingredient/<int:ingredient_id>', methods=['DELETE'])
@@ -226,6 +247,8 @@ def create_sponsor():
     )
     conn.commit()
     conn.close()
+    
+    log_action(g.username, "deleted ingredient", f"id={ingredient_id}")
 
     return jsonify({'status': 'sponsor product created'}), 201
 
@@ -247,6 +270,8 @@ def edit_sponsor(sponsor_id):
     )
     conn.commit()
     conn.close()
+    
+    log_action(g.username, "edited sponsor", f"id={sponsor_id}, name={sponsor_name}, product_name={product_name}, product_description={product_description}, product_picture={product_picture}")
 
     return jsonify({'status': 'sponsor product updated'})
 
@@ -258,6 +283,8 @@ def delete_sponsor(sponsor_id):
     cursor.execute('DELETE FROM sponsors WHERE id = ?', (sponsor_id,))
     conn.commit()
     conn.close()
+    
+    log_action(g.username, "deleted sponsor", f"id={sponsor_id}")
 
     return jsonify({'status': 'sponsor product deleted'})
 
