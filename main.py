@@ -85,10 +85,131 @@ def require_token(f):
         return f(*args, **kwargs)
     return wrapper
     
+# Test admin route
 @app.route('/admin/protected', methods=['GET'])
 @require_token
 def protected_route():
     return jsonify({'message': 'Authorized access'})
+
+@app.route('/admin/ingredients', methods=['GET'])
+@require_token
+def list_ingredients():
+    count = int(request.args.get('count', 10))
+    after = int(request.args.get('after', 0))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'SELECT id, name, description FROM ingredients '
+        'LIMIT ? OFFSET ?', (count, after)
+    )
+    ingredients = cursor.fetchall()
+    conn.close()
+
+    return jsonify([dict(row) for row in ingredients])
+
+@app.route('/admin/ingredient', methods=['POST'])
+@require_token
+def create_ingredient():
+    data = request.json
+    name = data.get('name')
+    description = data.get('description')
+
+    if not name or not description:
+        return jsonify({'error': 'Missing name or description'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO ingredients (name, description) VALUES (?, ?)', (name, description))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'status': 'ingredient created'}), 201
+
+@app.route('/admin/ingredient/<int:ingredient_id>', methods=['PUT'])
+@require_token
+def edit_ingredient(ingredient_id):
+    data = request.json
+    name = data.get('name')
+    description = data.get('description')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'UPDATE ingredients SET name = ?, description = ? WHERE id = ?',
+        (name, description, ingredient_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({'status': 'ingredient updated'})
+
+@app.route('/admin/ingredient/<int:ingredient_id>', methods=['DELETE'])
+@require_token
+def delete_ingredient(ingredient_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM ingredients WHERE id = ?', (ingredient_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'status': 'ingredient deleted'})
+
+@app.route('/admin/sponsor', methods=['POST'])
+@require_token
+def create_sponsor():
+    data = request.json
+    sponsor_name = data.get('sponsor_name')
+    product_name = data.get('product_name')
+    product_description = data.get('product_description')
+    product_picture = data.get('product_picture')
+
+    if not all([sponsor_name, product_name, product_description, product_picture]):
+        return jsonify({'error': 'Missing fields'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO sponsors (sponsor_name, product_name, product_description, product_picture) '
+        'VALUES (?, ?, ?, ?)',
+        (sponsor_name, product_name, product_description, product_picture)
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({'status': 'sponsor product created'}), 201
+
+@app.route('/admin/sponsor/<int:sponsor_id>', methods=['PUT'])
+@require_token
+def edit_sponsor(sponsor_id):
+    data = request.json
+    sponsor_name = data.get('sponsor_name')
+    product_name = data.get('product_name')
+    product_description = data.get('product_description')
+    product_picture = data.get('product_picture')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'UPDATE sponsors SET sponsor_name = ?, product_name = ?, product_description = ?, product_picture = ? '
+        'WHERE id = ?',
+        (sponsor_name, product_name, product_description, product_picture, sponsor_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({'status': 'sponsor product updated'})
+
+@app.route('/admin/sponsor/<int:sponsor_id>', methods=['DELETE'])
+@require_token
+def delete_sponsor(sponsor_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM sponsors WHERE id = ?', (sponsor_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'status': 'sponsor product deleted'})
 
 if __name__ == '__main__':
     init_db()
