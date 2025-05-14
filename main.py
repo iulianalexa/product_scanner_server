@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import sqlite3
+import sqlite_spellfix
 
 import uuid
 import time
@@ -32,6 +33,8 @@ SCHEMA_FILE = 'schema.sql'
 
 def get_db_connection():
     conn = sqlite3.connect(DATABASE)
+    conn.enable_load_extension(True)
+    conn.load_extension(sqlite_spellfix.extension_path())
     conn.row_factory = sqlite3.Row  # Enables dict-like access to rows
     return conn
 
@@ -40,6 +43,8 @@ def init_db():
         schema_sql = f.read()
 
     conn = sqlite3.connect(DATABASE)
+    conn.enable_load_extension(True)
+    conn.load_extension(sqlite_spellfix.extension_path())
     conn.executescript(schema_sql)
     conn.commit()
     conn.close()
@@ -96,36 +101,45 @@ def scan_ingredients():
     if not input_text.strip():
         return jsonify({'error': 'Text input is required'}), 400
 
-    # Tokenize input string into unique lowercase words
-    words = set(re.findall(r'\b\w+\b', input_text))
-    if not words:
-        return jsonify({'matched_ingredients': [], 'average_score': 0.0})
+    # Normalize: remove punctuation
+    cleaned = re.sub(r'[^\w\s]', '', input_text)
+    tokens = cleaned.split()
 
-    placeholders = ','.join('?' for _ in words)
-
-    query = f'''
-        SELECT id, name, description, ingredient_score
-        FROM ingredients
-        WHERE LOWER(name) IN ({placeholders})
-    '''
+    # Generate n-grams (1 to 5 words)
+    ngrams = set()
+    for n in range(1, 6):
+        for i in range(len(tokens) - n + 1):
+            ngram = ' '.join(tokens[i:i+n])
+            ngrams.add(ngram)
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(query, list(words))
-    matched_rows = cursor.fetchall()
-    conn.close()
 
     matched = []
+    seen_ids = set()
     total_score = 0.0
 
-    for row in matched_rows:
-        matched.append({
-            'ingredient_id': row['id'],
-            'ingredient_name': row['name'],
-            'ingredient_description': row['description'],
-            'ingredient_score': row['ingredient_score']
-        })
-        total_score += row['ingredient_score']
+    for term in ngrams:
+        # Only get high-confidence matches (edit_distance < 2)
+        cursor.execute('''
+            SELECT i.id, i.name, i.description, i.ingredient_score
+            FROM ingredients_spell s
+            JOIN ingredients i ON i.name = s.word
+            WHERE s.word MATCH ? AND s.distance < 2
+            LIMIT 1
+        ''', (term,))
+        row = cursor.fetchone()
+        if row and row['id'] not in seen_ids:
+            seen_ids.add(row['id'])
+            matched.append({
+                'ingredient_id': row['id'],
+                'ingredient_name': row['name'],
+                'ingredient_description': row['description'],
+                'ingredient_score': row['ingredient_score']
+            })
+            total_score += row['ingredient_score']
+
+    conn.close()
 
     average_score = round(total_score / len(matched), 2) if matched else 0.0
 
