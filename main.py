@@ -7,6 +7,8 @@ from werkzeug.security import check_password_hash
 
 from functools import wraps
 
+import re
+
 tokens = {}  # token -> (username, expiry)
 TOKEN_EXPIRY_SECONDS = 3600  # 1 hour
 
@@ -71,6 +73,52 @@ def get_sponsors():
 
     sponsor_list = [dict(row) for row in sponsors]
     return jsonify(sponsor_list)
+    
+@app.route('/ingredients', methods=['POST'])
+def scan_ingredients():
+    data = request.get_json()
+    input_text = data.get('text', '').lower()
+
+    if not input_text.strip():
+        return jsonify({'error': 'Text input is required'}), 400
+
+    # Tokenize input string into unique lowercase words
+    words = set(re.findall(r'\b\w+\b', input_text))
+    if not words:
+        return jsonify({'matched_ingredients': [], 'average_score': 0.0})
+
+    placeholders = ','.join('?' for _ in words)
+
+    query = f'''
+        SELECT id, name, description, ingredient_score
+        FROM ingredients
+        WHERE LOWER(name) IN ({placeholders})
+    '''
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(query, list(words))
+    matched_rows = cursor.fetchall()
+    conn.close()
+
+    matched = []
+    total_score = 0.0
+
+    for row in matched_rows:
+        matched.append({
+            'ingredient_id': row['id'],
+            'ingredient_name': row['name'],
+            'ingredient_description': row['description'],
+            'ingredient_score': row['ingredient_score']
+        })
+        total_score += row['ingredient_score']
+
+    average_score = round(total_score / len(matched), 2) if matched else 0.0
+
+    return jsonify({
+        'matched_ingredients': matched,
+        'average_score': average_score
+    })
 
 def require_token(f):
     @wraps(f)
