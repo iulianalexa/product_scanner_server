@@ -7,6 +7,22 @@ from werkzeug.security import check_password_hash
 
 from functools import wraps
 
+import re
+
+import logging
+
+from flask import g
+
+admin_logger = logging.getLogger('admin_logger')
+admin_logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler('admin_actions.log')
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+
+admin_logger.addHandler(file_handler)
+def log_action(username, action, details):
+    admin_logger.info(f"{username} {action}: {details}")
+
 tokens = {}  # token -> (username, expiry)
 TOKEN_EXPIRY_SECONDS = 3600  # 1 hour
 
@@ -71,6 +87,52 @@ def get_sponsors():
 
     sponsor_list = [dict(row) for row in sponsors]
     return jsonify(sponsor_list)
+    
+@app.route('/ingredients', methods=['POST'])
+def scan_ingredients():
+    data = request.get_json()
+    input_text = data.get('text', '').lower()
+
+    if not input_text.strip():
+        return jsonify({'error': 'Text input is required'}), 400
+
+    # Tokenize input string into unique lowercase words
+    words = set(re.findall(r'\b\w+\b', input_text))
+    if not words:
+        return jsonify({'matched_ingredients': [], 'average_score': 0.0})
+
+    placeholders = ','.join('?' for _ in words)
+
+    query = f'''
+        SELECT id, name, description, ingredient_score
+        FROM ingredients
+        WHERE LOWER(name) IN ({placeholders})
+    '''
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(query, list(words))
+    matched_rows = cursor.fetchall()
+    conn.close()
+
+    matched = []
+    total_score = 0.0
+
+    for row in matched_rows:
+        matched.append({
+            'ingredient_id': row['id'],
+            'ingredient_name': row['name'],
+            'ingredient_description': row['description'],
+            'ingredient_score': row['ingredient_score']
+        })
+        total_score += row['ingredient_score']
+
+    average_score = round(total_score / len(matched), 2) if matched else 0.0
+
+    return jsonify({
+        'matched_ingredients': matched,
+        'average_score': average_score
+    })
 
 def require_token(f):
     @wraps(f)
@@ -82,6 +144,7 @@ def require_token(f):
         if time.time() > expiry:
             del tokens[token]
             return jsonify({'error': 'Token expired'}), 401
+        g.username = username  # attach username to request context
         return f(*args, **kwargs)
     return wrapper
     
@@ -127,6 +190,9 @@ def create_ingredient():
     )
     conn.commit()
     conn.close()
+    
+    log_action(g.username, "created ingredient", f"{name}, score={score}")
+    
     return jsonify({'status': 'ingredient created'})
 
 @app.route('/admin/ingredient/<int:id>', methods=['PUT'])
@@ -144,6 +210,9 @@ def edit_ingredient(id):
     )
     conn.commit()
     conn.close()
+    
+    log_action(g.username, "edited ingredient", f"id={id}, name={name}, score={score}")
+    
     return jsonify({'status': 'ingredient updated'})
 
 @app.route('/admin/ingredient/<int:ingredient_id>', methods=['DELETE'])
@@ -178,6 +247,8 @@ def create_sponsor():
     )
     conn.commit()
     conn.close()
+    
+    log_action(g.username, "deleted ingredient", f"id={ingredient_id}")
 
     return jsonify({'status': 'sponsor product created'}), 201
 
@@ -199,6 +270,8 @@ def edit_sponsor(sponsor_id):
     )
     conn.commit()
     conn.close()
+    
+    log_action(g.username, "edited sponsor", f"id={sponsor_id}, name={sponsor_name}, product_name={product_name}, product_description={product_description}, product_picture={product_picture}")
 
     return jsonify({'status': 'sponsor product updated'})
 
@@ -210,6 +283,8 @@ def delete_sponsor(sponsor_id):
     cursor.execute('DELETE FROM sponsors WHERE id = ?', (sponsor_id,))
     conn.commit()
     conn.close()
+    
+    log_action(g.username, "deleted sponsor", f"id={sponsor_id}")
 
     return jsonify({'status': 'sponsor product deleted'})
 
