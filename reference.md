@@ -33,7 +33,7 @@ Query Parameters:
 - count (optional, default: 10): number of items to return
 - after (optional, default: 0): offset from the beginning
 
-Response:
+Response (JSON):
 
 ```json
 [
@@ -44,6 +44,41 @@ Response:
     "product_picture": "https://example.com/pic.jpg"
   }
 ]
+```
+
+### Ingredients
+#### POST /ingredients
+
+Scans the given text input for ingredient names and returns any matches from the database, along with their descriptions and scores.
+
+Request (JSON):
+
+```json
+{
+  "text": "List of ingredients like sugar, salt, turmeric..."
+}
+```
+
+Response (JSON):
+
+```json
+{
+  "matched_ingredients": [
+    {
+      "ingredient_id": 1,
+      "ingredient_name": "sugar",
+      "ingredient_description": "Sweet crystalline substance",
+      "ingredient_score": 2.5
+    },
+    {
+      "ingredient_id": 2,
+      "ingredient_name": "salt",
+      "ingredient_description": "Common seasoning",
+      "ingredient_score": 1.2
+    }
+  ],
+  "average_score": 1.85
+}
 ```
 
 ## Admin endpoints
