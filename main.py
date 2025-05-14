@@ -99,13 +99,14 @@ def list_ingredients():
 
     conn = get_db_connection()
     cursor = conn.cursor()
+
     cursor.execute(
-        'SELECT id, name, description FROM ingredients '
+        'SELECT id, name, description, ingredient_score FROM ingredients '
         'LIMIT ? OFFSET ?', (count, after)
     )
+
     ingredients = cursor.fetchall()
     conn.close()
-
     return jsonify([dict(row) for row in ingredients])
 
 @app.route('/admin/ingredient', methods=['POST'])
@@ -114,34 +115,35 @@ def create_ingredient():
     data = request.json
     name = data.get('name')
     description = data.get('description')
+    score = data.get('ingredient_score', 0.0)
 
     if not name or not description:
-        return jsonify({'error': 'Missing name or description'}), 400
+        return jsonify({'error': 'Missing fields'}), 400
 
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('INSERT INTO ingredients (name, description) VALUES (?, ?)', (name, description))
-    conn.commit()
-    conn.close()
-
-    return jsonify({'status': 'ingredient created'}), 201
-
-@app.route('/admin/ingredient/<int:ingredient_id>', methods=['PUT'])
-@require_token
-def edit_ingredient(ingredient_id):
-    data = request.json
-    name = data.get('name')
-    description = data.get('description')
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        'UPDATE ingredients SET name = ?, description = ? WHERE id = ?',
-        (name, description, ingredient_id)
+    conn.execute(
+        'INSERT INTO ingredients (name, description, ingredient_score) VALUES (?, ?, ?)',
+        (name, description, score)
     )
     conn.commit()
     conn.close()
+    return jsonify({'status': 'ingredient created'})
 
+@app.route('/admin/ingredient/<int:id>', methods=['PUT'])
+@require_token
+def edit_ingredient(id):
+    data = request.json
+    name = data.get('name')
+    description = data.get('description')
+    score = data.get('ingredient_score', 0.0)
+
+    conn = get_db_connection()
+    conn.execute(
+        'UPDATE ingredients SET name = ?, description = ?, ingredient_score = ? WHERE id = ?',
+        (name, description, score, id)
+    )
+    conn.commit()
+    conn.close()
     return jsonify({'status': 'ingredient updated'})
 
 @app.route('/admin/ingredient/<int:ingredient_id>', methods=['DELETE'])
