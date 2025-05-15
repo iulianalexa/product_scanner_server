@@ -102,7 +102,8 @@ def scan_ingredients():
         return jsonify({'error': 'Text input is required'}), 400
 
     # Normalize: remove punctuation
-    cleaned = re.sub(r'[^\w\s]', '', input_text)
+    cleaned = input_text.replace('\n', ' ').replace('\r', ' ')
+    cleaned = re.sub(r'[^\w\s]', '', cleaned)
     tokens = cleaned.split()
 
     # Generate n-grams (1 to 5 words)
@@ -119,15 +120,15 @@ def scan_ingredients():
     seen_ids = set()
     total_score = 0.0
 
-    for term in ngrams:
-        # Only get high-confidence matches (edit_distance < 2)
+    for term in ngrams:            
+        allowed_edit_distance = int(.2 * len(term)) * 100 + 1
         cursor.execute('''
             SELECT i.id, i.name, i.description, i.ingredient_score
             FROM ingredients_spell s
             JOIN ingredients i ON i.name = s.word
-            WHERE s.word MATCH ? AND s.distance < 2
+            WHERE s.word MATCH ? AND s.distance < ?
             LIMIT 1
-        ''', (term,))
+        ''', (term, allowed_edit_distance))
         row = cursor.fetchone()
         if row and row['id'] not in seen_ids:
             seen_ids.add(row['id'])
