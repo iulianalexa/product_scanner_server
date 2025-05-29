@@ -82,7 +82,7 @@ def get_sponsors():
     cursor = conn.cursor()
 
     cursor.execute(
-        'SELECT sponsor_name, product_name, product_description, product_picture '
+        'SELECT id, sponsor_name, product_name, product_description, product_picture '
         'FROM sponsors '
         'LIMIT ? OFFSET ?', (count, after)
     )
@@ -263,7 +263,7 @@ def create_sponsor():
     conn.commit()
     conn.close()
     
-    log_action(g.username, "deleted ingredient", f"id={ingredient_id}")
+    log_action(g.username, "added sponsor product", f"sponsor_name={sponsor_name}, product_name={product_name}, product_description={product_description}")
 
     return jsonify({'status': 'sponsor product created'}), 201
 

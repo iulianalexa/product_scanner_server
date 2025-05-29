@@ -38,10 +38,11 @@ Response (JSON):
 ```json
 [
   {
+    "id": 1,
     "sponsor_name": "Cool Corp",
     "product_name": "Smart Widget",
     "product_description": "A cool device.",
-    "product_picture": "https://example.com/pic.jpg"
+    "product_picture": "base 64 encoding of image"
   }
 ]
 ```
@@ -94,7 +95,7 @@ Request (JSON):
   "sponsor_name": "Cool Corp",
   "product_name": "Smart Widget",
   "product_description": "A cool device.",
-  "product_picture": "https://example.com/pic.jpg"
+  "product_picture": "base64 encoding of image"
 }
 ```
 
@@ -116,7 +117,7 @@ Request (JSON):
   "sponsor_name": "Cool Corp",
   "product_name": "Smarter Widget",
   "product_description": "An improved device.",
-  "product_picture": "https://example.com/pic2.jpg"
+  "product_picture": "base64 encoding of image"
 }
 ```
 
